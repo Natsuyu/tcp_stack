@@ -311,8 +311,10 @@ int tcp_sock_connect(struct tcp_sock *tsk, struct sock_addr *skaddr)
 	tcp_bind_hash(tsk);
 
 	//send SYN
-	tcp_send_control_packet(tsk, TCP_SYN);
 	tcp_set_state(tsk, TCP_SYN_SENT);
+	tcp_hash(tsk);
+	tcp_send_control_packet(tsk, TCP_SYN);
+	
 
 	if(sleep_on(tsk->wait_connect)<0) return -1;
 
@@ -439,12 +441,9 @@ int tcp_sock_read(struct tcp_sock *tsk, char *buf, int len)
 		}		
 	}
 
-	if(ring_buffer_empty(tsk->rcv_buf)) return -1;
+	//if(ring_buffer_empty(tsk->rcv_buf)) return -1;
 
-	int err = 0;
-	err = read_ring_buffer(tsk->rcv_buf, buf, len);
-
-	return err;
+	return read_ring_buffer(tsk->rcv_buf, buf, len);;
 }
 
 // sending data by calling tcp_send_data
