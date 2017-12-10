@@ -152,8 +152,6 @@ static inline int is_tcp_seq_valid(struct tcp_sock *tsk, struct tcp_cb *cb)
 // tcp_sock_read (wait_recv)
 int tcp_recv_data(struct tcp_sock *tsk, struct tcp_cb *cb, char *packet)
 {
-	fprintf(stdout, "TODO: tcp_recv_data.\n");
-
 	if(cb->pl_len > 0) {
 		tsk->rcv_nxt += cb->pl_len;
 		write_ring_buffer(tsk->rcv_buf, cb->payload, cb->pl_len);
