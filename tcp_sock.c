@@ -341,7 +341,6 @@ inline int tcp_sock_accept_queue_full(struct tcp_sock *tsk)
 }
 
 // push the tcp sock into accept_queue
-// 为什么是tsk->accept_backlog加一而不是该父套接字的对应变量加一？？？
 inline void tcp_sock_accept_enqueue(struct tcp_sock *tsk)
 {
 	if (!list_empty(&tsk->list))
@@ -424,10 +423,11 @@ int tcp_sock_read(struct tcp_sock *tsk, char *buf, int len)
 			return -1;
 		}		
 	}
-
+	
 	//if(ring_buffer_empty(tsk->rcv_buf)) return -1;
-
-	return read_ring_buffer(tsk->rcv_buf, buf, len);;
+	int rlen = read_ring_buffer(tsk->rcv_buf, buf, len);
+	tsk->rcv_wnd += rlen;
+	return rlen;
 }
 
 // sending data by calling tcp_send_data

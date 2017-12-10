@@ -89,7 +89,7 @@ void *tcp_client(void *arg)
 		}
 		sleep(1);
 	}
-
+	log(DEBUG, "close this connection");
 	tcp_sock_close(tsk);
 
 	return NULL;

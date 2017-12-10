@@ -18,7 +18,7 @@ void *tcp_server(void *arg)
 		log(ERROR, "tcp_sock bind to port %hu failed", ntohs(port));
 		exit(1);
 	}
-	fprintf(stdout, "bind!bind!.\n");
+	
 	if (tcp_sock_listen(tsk, 3) < 0) {
 		log(ERROR, "tcp_sock listen failed");
 		exit(1);
@@ -89,7 +89,7 @@ void *tcp_client(void *arg)
 		}
 		sleep(1);
 	}
-	log(DEBUG, "close this connection(client).");
+	log(DEBUG, "close this connection");
 	tcp_sock_close(tsk);
 
 	return NULL;

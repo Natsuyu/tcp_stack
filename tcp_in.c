@@ -36,7 +36,7 @@ void tcp_state_listen(struct tcp_sock *tsk, struct tcp_cb *cb, char *packet)
 	child->sk_dport = cb->sport;
 
 	//更新ACK值
-	child->rcv_nxt = cb->seq + 1;
+	child->rcv_nxt = cb->seq_end;
 
 	//改变状态
 	tcp_set_state(child, TCP_SYN_RECV);
@@ -63,8 +63,7 @@ void tcp_state_closed(struct tcp_sock *tsk, struct tcp_cb *cb, char *packet)
 void tcp_state_syn_sent(struct tcp_sock *tsk, struct tcp_cb *cb, char *packet)
 {
 	if((cb->flags & (TCP_SYN|TCP_ACK)) == (TCP_SYN|TCP_ACK)) {
-		//ACK+1
-		tsk->rcv_nxt = cb->seq + 1;
+		tsk->rcv_nxt = cb->seq_end;
 
 		tcp_set_state(tsk, TCP_ESTABLISHED);
 		tcp_send_control_packet(tsk, TCP_ACK);
@@ -119,14 +118,11 @@ void tcp_state_syn_recv(struct tcp_sock *tsk, struct tcp_cb *cb, char *packet)
 	//从父套接字中删除自己
 	list_delete_entry(&tsk->list);
 
-	//??? if(tcp_sock_accept_queue_full(tsk)) return;
 	tcp_sock_accept_enqueue(tsk);
 
 	//改变状态
 	tcp_set_state(tsk, TCP_ESTABLISHED);
-	int tmp = tsk->state;
-	fprintf(stdout, "tcp_state_syn_recv\n");
-	fprintf(stdout, "%d\n", tmp);
+	
 	wake_up(tsk->parent->wait_accept);
 }
 
@@ -153,7 +149,6 @@ static inline int is_tcp_seq_valid(struct tcp_sock *tsk, struct tcp_cb *cb)
 int tcp_recv_data(struct tcp_sock *tsk, struct tcp_cb *cb, char *packet)
 {
 	if(cb->pl_len > 0) {
-		tsk->rcv_nxt += cb->pl_len;
 		write_ring_buffer(tsk->rcv_buf, cb->payload, cb->pl_len);
 	}
 
@@ -190,13 +185,10 @@ void tcp_process(struct tcp_sock *tsk, struct tcp_cb *cb, char *packet)
 		case TCP_SYN_SENT:
 			tcp_state_syn_sent(tsk, cb, packet);
 			return;
-		case TCP_SYN_RECV:
-			tcp_state_syn_recv(tsk, cb, packet);
-			return;
 	}
 
 	if(!is_tcp_seq_valid(tsk, cb)) return;
-
+	
 	if(cb->flags & TCP_RST) {
 		tcp_set_state(tsk, TCP_CLOSED);
 		tcp_unhash(tsk);
@@ -205,35 +197,27 @@ void tcp_process(struct tcp_sock *tsk, struct tcp_cb *cb, char *packet)
 
 	if(cb->flags & TCP_SYN) {
 		tcp_send_reset(cb);
+		tcp_set_state(tsk, TCP_CLOSED);
+		tcp_unhash(tsk);
 		return;
 	}
 	
-	tsk->rcv_wnd -= cb->pl_len;
-	tcp_update_window_safe(tsk, cb);
-
-	//if the state == tcp_established
-	if(tsk->state == TCP_ESTABLISHED && cb->pl_len>0 && (cb->flags == TCP_ACK || ((cb->flags & (TCP_ACK|TCP_PSH)) == (TCP_ACK|TCP_PSH)))) {
-		tcp_recv_data(tsk, cb, packet);
-		return;
+	if(!(cb->flags & TCP_ACK)) {
+		return;	
 	}
 	
-	//change to tcp_close_wait
-	if(tsk->state == TCP_ESTABLISHED && (cb->flags & TCP_FIN)) {
-		tcp_set_state(tsk, TCP_CLOSE_WAIT);
-		tcp_send_control_packet(tsk, TCP_ACK);
-		tcp_send_control_packet(tsk, TCP_FIN|TCP_ACK);
-		tcp_set_state(tsk, TCP_LAST_ACK);
+	if(tsk->state == TCP_SYN_RECV) {
+		tcp_state_syn_recv(tsk, cb, packet);
 		return;
 	}
-
 	//change to tcp_fin_wait_2
-	if(tsk->state == TCP_FIN_WAIT_1 && (cb->flags & TCP_ACK)) {
+	if(tsk->state == TCP_FIN_WAIT_1) {
 		tcp_set_state(tsk, TCP_FIN_WAIT_2);
 		return;
 	}
-
 	//change to timewait
 	if(tsk->state == TCP_FIN_WAIT_2 && (cb->flags & (TCP_FIN|TCP_ACK))) {
+		tsk->rcv_nxt = cb->seq_end;
 		tcp_set_state(tsk, TCP_TIME_WAIT);
 		tcp_send_control_packet(tsk, TCP_ACK);
 		tcp_set_timewait_timer(tsk);
@@ -242,9 +226,28 @@ void tcp_process(struct tcp_sock *tsk, struct tcp_cb *cb, char *packet)
 	}
 
 	//change to tcp_closed
-	if(tsk->state == TCP_LAST_ACK && (cb->flags & TCP_ACK)) {
+	if(tsk->state == TCP_LAST_ACK) {
 		tcp_set_state(tsk, TCP_CLOSED);
 		tcp_unhash(tsk);
+		return;
 	}
-
+	
+	tsk->rcv_wnd -= cb->pl_len;
+	tcp_update_window_safe(tsk, cb);
+	
+	
+	if(cb->pl_len>0) {
+		tcp_recv_data(tsk, cb, packet);
+	}
+	
+	//change to tcp_close_wait
+	if(cb->flags & TCP_FIN) {
+		tcp_set_state(tsk, TCP_CLOSE_WAIT);
+		tsk->rcv_nxt = cb->seq_end;
+		tcp_send_control_packet(tsk, TCP_ACK);
+		tcp_send_control_packet(tsk, TCP_FIN|TCP_ACK);
+		tcp_set_state(tsk, TCP_LAST_ACK);
+		return;
+	}
+	
 }
