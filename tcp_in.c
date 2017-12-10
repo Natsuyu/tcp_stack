@@ -234,7 +234,7 @@ void tcp_process(struct tcp_sock *tsk, struct tcp_cb *cb, char *packet)
 	
 	tsk->rcv_wnd -= cb->pl_len;
 	tcp_update_window_safe(tsk, cb);
-	
+	tsk->rcv_nxt = cb->seq_end;
 	
 	if(cb->pl_len>0) {
 		tcp_recv_data(tsk, cb, packet);
@@ -243,7 +243,7 @@ void tcp_process(struct tcp_sock *tsk, struct tcp_cb *cb, char *packet)
 	//change to tcp_close_wait
 	if(cb->flags & TCP_FIN) {
 		tcp_set_state(tsk, TCP_CLOSE_WAIT);
-		tsk->rcv_nxt = cb->seq_end;
+		
 		tcp_send_control_packet(tsk, TCP_ACK);
 		tcp_send_control_packet(tsk, TCP_FIN|TCP_ACK);
 		tcp_set_state(tsk, TCP_LAST_ACK);
