@@ -208,7 +208,7 @@ void tcp_process(struct tcp_sock *tsk, struct tcp_cb *cb, char *packet)
 	if(!is_tcp_seq_valid(tsk, cb)) return;
 
 	if(cb->flags & TCP_RST) {
-		tcp_unhash(tsk);
+		goto close;
 	}
 
 	if(cb->flags & TCP_SYN) {
@@ -244,17 +244,18 @@ void tcp_process(struct tcp_sock *tsk, struct tcp_cb *cb, char *packet)
 		tcp_set_state(tsk, TCP_TIME_WAIT);
 		tcp_send_control_packet(tsk, TCP_ACK);
 		tcp_set_timewait_timer(tsk);
-		tcp_unhash(tsk);
+
 		return;
 	}
 
 	//change to tco_closed
 	if(tsk->state == TCP_LAST_ACK && (cb->flags & TCP_ACK)) {
 		tcp_set_state(tsk, TCP_CLOSED);
-		tcp_unhash(tsk);
+		goto close;
 	}
 
-	    
+	close:
+	    tcp_unhash(tsk);
 
 
 }
