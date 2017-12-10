@@ -42,7 +42,9 @@ void tcp_state_listen(struct tcp_sock *tsk, struct tcp_cb *cb, char *packet)
 
 	//改变状态
 	tcp_set_state(child, TCP_SYN_RECV);
-
+	int tmp = tsk->state;
+	fprintf(stdout, "tcp_state_listen\n");
+	fprintf(stdout, "%d\n", tmp);
 	//把套接字放入established table，并加入父套接字的listen队列中
 	tcp_hash(child);
 	//？？？这里是child->list 还是child->listen_queue
@@ -72,7 +74,9 @@ void tcp_state_syn_sent(struct tcp_sock *tsk, struct tcp_cb *cb, char *packet)
 		tsk->rcv_nxt = cb->seq + 1;
 
 		tcp_set_state(tsk, TCP_ESTABLISHED);
-
+	int tmp = tsk->state;
+	fprintf(stdout, "tcp_state_syn_sent\n");
+	fprintf(stdout, "%d\n", tmp);
 		tcp_send_control_packet(tsk, TCP_ACK);
 
 		//等待连接
@@ -132,7 +136,9 @@ void tcp_state_syn_recv(struct tcp_sock *tsk, struct tcp_cb *cb, char *packet)
 
 	//改变状态
 	tcp_set_state(tsk, TCP_ESTABLISHED);
-
+	int tmp = tsk->state;
+	fprintf(stdout, "tcp_state_syn_recv\n");
+	fprintf(stdout, "%d\n", tmp);
 	wake_up(tsk->parent->wait_accept);
 }
 
@@ -189,7 +195,9 @@ int tcp_recv_data(struct tcp_sock *tsk, struct tcp_cb *cb, char *packet)
 void tcp_process(struct tcp_sock *tsk, struct tcp_cb *cb, char *packet)
 {
 	fprintf(stdout, "TODO: tcp_process.\n");
-	
+	int tmp = tsk->state;
+	fprintf(stdout, "test point\n");
+	fprintf(stdout, "%d\n", tmp);
 	switch(tsk->state){
 		case TCP_CLOSED:
 			tcp_state_closed(tsk, cb, packet);
@@ -208,17 +216,21 @@ void tcp_process(struct tcp_sock *tsk, struct tcp_cb *cb, char *packet)
 	if(!is_tcp_seq_valid(tsk, cb)) return;
 
 	if(cb->flags & TCP_RST) {
+		tcp_set_state(tsk, TCP_CLOSED);
 		tcp_unhash(tsk);
+		return;
 	}
 
 	if(cb->flags & TCP_SYN) {
 		tcp_send_reset(cb);
 		return;
 	}
+	
+	tsk->rcv_wnd -= cb->pl_len;
+	tcp_update_window_safe(tsk, cb);
 
 	//if the state == tcp_established
-	if(tsk->state == TCP_ESTABLISHED && (cb->flags == TCP_ACK || ((cb->flags & (TCP_ACK|TCP_PSH)) == (TCP_ACK|TCP_PSH)))) {
-		tcp_update_window_safe(tsk, cb);
+	if(tsk->state == TCP_ESTABLISHED && cb->pl_len>0 && (cb->flags == TCP_ACK || ((cb->flags & (TCP_ACK|TCP_PSH)) == (TCP_ACK|TCP_PSH)))) {
 		tcp_recv_data(tsk, cb, packet);
 		return;
 	}
@@ -227,34 +239,49 @@ void tcp_process(struct tcp_sock *tsk, struct tcp_cb *cb, char *packet)
 	if(tsk->state == TCP_ESTABLISHED && (cb->flags & TCP_FIN)) {
 		tcp_set_state(tsk, TCP_CLOSE_WAIT);
 		tcp_send_control_packet(tsk, TCP_ACK);
-		tcp_set_state(tsk, TCP_LAST_ACK);
+	
+	tmp = tsk->state;
+	fprintf(stdout, "change to tcp_close_wait1\n");
+	fprintf(stdout, "%d\n", tmp);
 		tcp_send_control_packet(tsk, TCP_FIN|TCP_ACK);
-		
+		tcp_set_state(tsk, TCP_LAST_ACK);
+	
+	int tmp = tsk->state;
+	fprintf(stdout, "change to tcp_close_wait2\n");
+	fprintf(stdout, "%d\n", tmp);
+
 		return;
 	}
 
 	//change to tcp_fin_wait_2
 	if(tsk->state == TCP_FIN_WAIT_1 && (cb->flags & TCP_ACK)) {
+	tmp = tsk->state;
+	fprintf(stdout, "change to tcp_fin_wait_2\n");
+	fprintf(stdout, "%d\n", tmp);
+		
 		tcp_set_state(tsk, TCP_FIN_WAIT_2);
 		return;
 	}
 
 	//change to timewait
-	if(tsk->state == TCP_FIN_WAIT_2 && (cb->flags & TCP_FIN)) {
+	if(tsk->state == TCP_FIN_WAIT_2 && (cb->flags & (TCP_FIN|TCP_ACK))) {
 		tcp_set_state(tsk, TCP_TIME_WAIT);
+	tmp = tsk->state;
+	fprintf(stdout, "change to timewait\n");
+	fprintf(stdout, "%d\n", tmp);
 		tcp_send_control_packet(tsk, TCP_ACK);
 		tcp_set_timewait_timer(tsk);
 		tcp_unhash(tsk);
 		return;
 	}
 
-	//change to tco_closed
+	//change to tcp_closed
 	if(tsk->state == TCP_LAST_ACK && (cb->flags & TCP_ACK)) {
 		tcp_set_state(tsk, TCP_CLOSED);
+	tmp = tsk->state;
+	fprintf(stdout, "change to change to tcp_closed\n");
+	fprintf(stdout, "%d\n", tmp);
 		tcp_unhash(tsk);
 	}
-
-	    
-
 
 }
